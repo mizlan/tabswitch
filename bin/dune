@@ -1,0 +1,4 @@
+(executable
+ (public_name tabswitch)
+ (name main)
+ (libraries tabswitch))
