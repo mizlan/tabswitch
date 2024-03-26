@@ -1,51 +1,64 @@
-open Lwt.Syntax
+open Containers
 open Yabai
 
-let () = print_endline "Hello, World!"
+type t = (App.t, Locinfo.t list) Hashtbl.t
 
-type info = { space : string; id : string }
-type state = (App.t * info) list
+let create () : t = Hashtbl.create 16
 
-let state = State.create ()
+let update (q : Query.t) (s : t) =
+  let keep =
+    Appinfo.(
+      function
+      | { app = "kitty"; id; space } ->
+          Some (App.Kitty, string_of_int id, string_of_int space)
+      | { app = "Skim"; id; space } ->
+          Some (App.Skim, string_of_int id, string_of_int space)
+      | { app = "Firefox"; id; space } ->
+          Some (App.Firefox, string_of_int id, string_of_int space)
+      | _ -> None)
+  in
+  let id_to_info = Hashtbl.create 8 in
+  List.iter
+    (fun a ->
+      match keep a with
+      | Some (app, id, space) -> Hashtbl.replace id_to_info id (space, app)
+      | None -> ())
+    q;
+
+  (* [tbl] now contains the set of windows that now exist *)
+  (* [id_to_info] now contains a mapping from now-existing window IDs to spaces (and app name) *)
+
+  (* keep all windows that continue to exist, processing *)
+  (* them first to keep their order. their space may have changed *)
+  Hashtbl.filter_map_inplace
+    (fun _ infos ->
+      Some
+        (List.filter_map
+           (fun (Locinfo.{ id; _ } as loc) ->
+             try
+               let sp, _ = Hashtbl.find id_to_info id in
+               Hashtbl.remove id_to_info id;
+               Some { loc with space = sp }
+             with Not_found -> None)
+           infos))
+    s;
+
+  (* now [id_to_info] only contains extra windows which did not previously exist *)
+  Hashtbl.iter
+    (fun id (space, app) ->
+      let l = try Hashtbl.find s app with Not_found -> [] in
+      Hashtbl.replace s app ({ id; space } :: l))
+    id_to_info
+
+let pp f s =
+  let open CCFormat in
+  fprintf f "{@[";
+  fprintf f "%a"
+    (Hashtbl.pp App.pp
+       (CCList.pp ~pp_start:(return "[") ~pp_stop:(return "]") Locinfo.pp))
+    s;
+  fprintf f "@]}"
 
 let f v = v |> Yojson.Safe.from_string |> Query.t_of_yojson
 
-let refresh () =
-  let* v =
-    Lwt_process.pread ("yabai", [| "yabai"; "-m"; "query"; "--windows" |])
-  in
-  print_string v;
-  let q = v |> Yojson.Safe.from_string |> Query.t_of_yojson in
-  State.update q state;
-  Lwt.return_unit
-
-let focus { space; id } =
-  let* _ =
-    Lwt_process.exec ("yabai", [| "yabai"; "-m"; "space"; "--focus"; space |])
-  in
-  let* _ =
-    Lwt_process.exec ("yabai", [| "yabai"; "-m"; "window"; "--focus"; id |])
-  in
-  Lwt.return_unit
-
-let fix () =
-  print_endline "fix"; Lwt.return_unit
-
-let cycle () =
-  print_endline "cycle"; Lwt.return_unit
-
-let handler addr (ic, oc) =
-  let* s = Lwt_io.read_line ic in
-  match s with
-  | "r" -> refresh ()
-  | "c" -> cycle ()
-  | "x" -> fix ()
-  | _ -> Lwt.return_unit
-
-let start_server () =
-  Lwt_main.run
-    (let* s =
-       Lwt_io.establish_server_with_client_address
-         (ADDR_UNIX "/Users/ml/chubby") handler
-     in
-     fst (Lwt.wait ()))
+(* below should be server.ml *)

@@ -1,4 +1,9 @@
-type t = Kitty [@name "kitty"] | Firefox | Skim [@@deriving compare]
+type t = Kitty | Firefox | Skim [@@deriving compare]
+
+let pp f = function
+  | Kitty -> Format.fprintf f "kitty"
+  | Firefox -> Format.fprintf f "Firefox"
+  | Skim -> Format.fprintf f "Skim"
 
 let launch = function
   | Kitty -> Lwt_process.exec ("kitty", [| "kitty"; "-1" |])
