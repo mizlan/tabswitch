@@ -1,4 +1,4 @@
-type t = Kitty [@name "kitty"] | Firefox | Skim [@@deriving compare, yojson]
+type t = Kitty [@name "kitty"] | Firefox | Skim [@@deriving compare]
 
 let launch = function
   | Kitty -> Lwt_process.exec ("kitty", [| "kitty"; "-1" |])

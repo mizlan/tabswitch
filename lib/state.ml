@@ -6,13 +6,17 @@ let () = print_endline "Hello, World!"
 type info = { space : string; id : string }
 type state = (App.t * info) list
 
-let state = ref State.AppMap.empty
+let state = State.create ()
+
+let f v = v |> Yojson.Safe.from_string |> Query.t_of_yojson
 
 let refresh () =
   let* v =
     Lwt_process.pread ("yabai", [| "yabai"; "-m"; "query"; "--windows" |])
   in
-  state := v |> Yojson.Safe.from_string |> Query.t_of_yojson |> State.t_of_query;
+  print_string v;
+  let q = v |> Yojson.Safe.from_string |> Query.t_of_yojson in
+  State.update q state;
   Lwt.return_unit
 
 let focus { space; id } =
@@ -24,6 +28,12 @@ let focus { space; id } =
   in
   Lwt.return_unit
 
+let fix () =
+  print_endline "fix"; Lwt.return_unit
+
+let cycle () =
+  print_endline "cycle"; Lwt.return_unit
+
 let handler addr (ic, oc) =
   let* s = Lwt_io.read_line ic in
   match s with
@@ -32,7 +42,7 @@ let handler addr (ic, oc) =
   | "x" -> fix ()
   | _ -> Lwt.return_unit
 
-let () =
+let start_server () =
   Lwt_main.run
     (let* s =
        Lwt_io.establish_server_with_client_address

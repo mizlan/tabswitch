@@ -1,1 +1,2 @@
-let () = print_endline "hi"
+open Tabswitch
+let () = Tabswitch.Main.start_server ()
