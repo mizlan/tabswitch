@@ -7,7 +7,6 @@ let refresh () =
   let* v =
     Lwt_process.pread ("yabai", [| "yabai"; "-m"; "query"; "--windows" |])
   in
-  print_string v;
   let q = v |> Yojson.Safe.from_string |> Query.t_of_yojson in
   State.update q state;
   Format.printf "%a@." State.pp state;
@@ -40,7 +39,7 @@ let handler addr (ic, oc) =
 
 let start_server () =
   Lwt_main.run
-    (let* s =
+    (let* _s =
        Lwt_io.establish_server_with_client_address
          (ADDR_UNIX "/Users/ml/chubby") handler
      in

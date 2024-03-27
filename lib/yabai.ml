@@ -1,5 +1,4 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
-open Containers
 
 module Appinfo = struct
   type t = { app : string; id : int; space : int }
