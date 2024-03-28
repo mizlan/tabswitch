@@ -1,9 +1,17 @@
-type t = Kitty | Firefox | Skim [@@deriving compare]
+type t = Kitty | Firefox | Skim | Neovide [@@deriving compare]
 
 let pp f = function
   | Kitty -> Format.fprintf f "kitty"
   | Firefox -> Format.fprintf f "Firefox"
   | Skim -> Format.fprintf f "Skim"
+  | Neovide -> Format.fprintf f "Neovide"
+
+let of_string = function
+  | "kitty" -> Some Kitty
+  | "Firefox" -> Some Firefox
+  | "Skim" -> Some Skim
+  | "Neovide" -> Some Neovide
+  | _ -> None
 
 let launch = function
   | Kitty -> Lwt_process.exec ("kitty", [| "kitty"; "-1" |])
