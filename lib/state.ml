@@ -1,14 +1,16 @@
 open Containers
-open Yabai
-module Locinfo_Priority_list = Priority_list.Make (Locinfo)
+module Appinfo_Priority_list = Priority_list.Make (Appinfo)
 
-type t = string option ref * (App.t, Locinfo_Priority_list.t) Hashtbl.t
+type t =
+  string option ref
+  * (string, Appinfo.t) Hashtbl.t ref
+  * (App.t, Appinfo_Priority_list.t) Hashtbl.t
 
-let create () : t = (ref None, Hashtbl.create 16)
+let create () : t = (ref None, ref (Hashtbl.create 16), Hashtbl.create 16)
 
-let update (q : Query.t) ((a, s) : t) =
+let update (q : Yabai.Query.t) ((a, i, s) : t) =
   let keep =
-    Appinfo.(
+    Yabai.Appinfo.(
       function
       | { app = "kitty"; id; space } ->
           Some (App.Kitty, string_of_int id, string_of_int space)
@@ -24,7 +26,8 @@ let update (q : Query.t) ((a, s) : t) =
   List.iter
     (fun a ->
       match keep a with
-      | Some (app, id, space) -> Hashtbl.replace id_to_info id (space, app)
+      | Some (app, id, space) ->
+          Hashtbl.replace id_to_info id Appinfo.{ app; id; space }
       | None -> ())
     q;
 
@@ -37,13 +40,14 @@ let update (q : Query.t) ((a, s) : t) =
 
   (* keep all windows that continue to exist, processing *)
   (* them first to keep their order. their space may have changed *)
+  let temp_id_to_info = Hashtbl.copy id_to_info in
   let clean infos =
     List.filter_map
-      (fun (Locinfo.{ id; _ } as loc) ->
+      (fun (Appinfo.{ id; _ } as loc) ->
         try
-          let sp, _ = Hashtbl.find id_to_info id in
-          Hashtbl.remove id_to_info id;
-          Some { loc with space = sp }
+          let Appinfo.{ space; _ } = Hashtbl.find temp_id_to_info id in
+          Hashtbl.remove temp_id_to_info id;
+          Some { loc with space }
         with Not_found -> None)
       infos
   in
@@ -51,20 +55,26 @@ let update (q : Query.t) ((a, s) : t) =
 
   (* now [id_to_info] only contains extra windows which did not previously exist *)
   Hashtbl.iter
-    (fun id (space, app) ->
+    (fun id Appinfo.{ app; id; space } ->
       let p, u = try Hashtbl.find s app with Not_found -> ([], []) in
-      Hashtbl.replace s app (p, { id; space } :: u))
-    id_to_info
+      Hashtbl.replace s app (p, { app; id; space } :: u))
+    temp_id_to_info;
 
-let first_app_window (app : App.t) ((_, s) : t) =
+  i := id_to_info
+
+let first_app_window (app : App.t) ((_, _, s) : t) =
   let open Option.Infix in
-  Hashtbl.find_opt s app >>= Locinfo_Priority_list.head_opt
+  Hashtbl.find_opt s app >>= Appinfo_Priority_list.head_opt
 
-(* let get_next_by_id id ((_, s) : t) = *)
-(*   let locs = Hashtbl.to_seq_values s |> List.of_seq |> List.flatten in *)
-(*   List.find_opt (fun { Locinfo.id = id'; _ } -> String.(id = id')) locs *)
+let get_by_id id ((_, i, _) : t) = Hashtbl.find_opt !i id
 
-let pp f ((a, s) : t) =
+let get_next app ((_, _, s) : t) =
+  Appinfo_Priority_list.get_next app (Hashtbl.find s app.app)
+
+let prioritize app ((_, _, s) : t) =
+  Appinfo_Priority_list.prioritize_back app (Hashtbl.find s app.app)
+
+let pp f ((a, _, s) : t) =
   let open CCFormat in
   pp_set_margin f 100;
   fprintf f "@[<v2>(%a) %a" (Option.pp String.pp) !a
@@ -72,7 +82,7 @@ let pp f ((a, s) : t) =
        ~pp_arrow:(return ":@ ") App.pp
        (CCPair.pp ~pp_start:(return "(@[") ~pp_stop:(return ")@]")
           (CCList.pp ~pp_start:(return "P[") ~pp_sep:space ~pp_stop:(return "]")
-             Locinfo.pp)
+             Appinfo.pp)
           (CCList.pp ~pp_start:(return "U[") ~pp_sep:space ~pp_stop:(return "]")
-             Locinfo.pp)))
+             Appinfo.pp)))
     s
